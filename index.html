@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Andor's Trail</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Andor's Trail">
+<meta name="theme-color" content="#14181b">
+<style>
+@font-face { font-family: 'Alegreya SC'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/AlegreyaSC-Medium.woff') format('woff'); }
+@font-face { font-family: 'Alegreya SC'; font-weight: 700; font-style: normal; font-display: swap; src: url('fonts/AlegreyaSC-Bold.woff') format('woff'); }
+@font-face { font-family: 'Alegreya Sans'; font-weight: 400; font-style: normal; font-display: swap; src: url('fonts/AlegreyaSans-Regular.woff') format('woff'); }
+@font-face { font-family: 'Alegreya Sans'; font-weight: 500; font-style: normal; font-display: swap; src: url('fonts/AlegreyaSans-Medium.woff') format('woff'); }
+@font-face { font-family: 'Alegreya Sans'; font-weight: 700; font-style: normal; font-display: swap; src: url('fonts/AlegreyaSans-Bold.woff') format('woff'); }
+[hidden] { display: none !important; }
+/* Layout: one full-screen map canvas; HUD strips pinned top and bottom; modal sheets slide up from the bottom. */
+:root {
+	--ink: #14181b;          /* page ground, behind the map */
+	--panel: #1e2427;        /* HUD + sheet surfaces */
+	--panel-2: #273034;      /* raised rows, buttons */
+	--line: #3b4649;         /* hairlines */
+	--parchment: #ece3cc;    /* primary text */
+	--muted: #a9a594;        /* secondary text */
+	--brass: #d4a64a;        /* accent: titles, primary actions */
+	--brass-ink: #2a1f08;    /* text on brass */
+	--hp: #c4483a;
+	--ap: #4f8ad1;
+	--xp: #8db24a;
+	--reward: #e2c26a;
+	--rare: #a96bdc; --extra: #4fa3d8; --legend: #64c06a; --quest: #e0c040;
+	--font-display: "Alegreya SC", "Palatino Linotype", Palatino, Georgia, serif;
+	--font-body: "Alegreya Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+	--r: 10px;
+	color-scheme: dark;
+}
+html, body { height: 100%; }
+html { overflow: hidden; overscroll-behavior: none; }
+body { background: var(--ink); color: var(--parchment); font-family: var(--font-body); font-size: 16px; overflow: hidden;
+	-webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+#app { position: fixed; inset: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); display: flex; flex-direction: column; }
+canvas.tileicon { image-rendering: pixelated; display: block; flex: none; }
+
+/* ---------- loading & start ---------- */
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px); overflow-y: auto; }
+#loading .bar { width: min(280px, 80vw); height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin-top: 18px; }
+#loading .bar i { display: block; height: 100%; width: 0; background: var(--brass); transition: width .2s; }
+#loading p { color: var(--muted); margin: 10px 0 0; font-size: 14px; }
+.logo { width: min(320px, 82vw); image-rendering: pixelated; }
+#start { background: radial-gradient(120% 70% at 50% 0%, #26302f 0%, var(--ink) 70%); gap: 14px; }
+#start .menu { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); margin-top: 8px; }
+#start .tag { color: var(--muted); font-size: 14px; text-align: center; margin: 0; max-width: 34ch; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--parchment); border-radius: var(--r); padding: 12px 14px; min-height: 46px; font-weight: 500; cursor: pointer; text-align: center; }
+.btn:active { filter: brightness(1.25); }
+.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); font-weight: 700; }
+.btn[disabled] { opacity: .4; pointer-events: none; }
+.btn.small { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+.btn.danger { border-color: #7a3a33; color: #f0b9b0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > .btn { flex: 1 1 0; }
+.field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.field label { font-size: 13px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.field input, .field select { font: inherit; font-size: 17px; background: var(--panel); color: var(--parchment); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; -webkit-user-select: text; user-select: text; }
+.heroes { display: flex; gap: 10px; justify-content: center; }
+.heroes button { background: var(--panel); border: 2px solid var(--line); border-radius: var(--r); padding: 6px; cursor: pointer; }
+.heroes button[aria-pressed="true"] { border-color: var(--brass); background: #2d2a1e; }
+.heroes img { width: 64px; height: 64px; image-rendering: pixelated; display: block; }
+
+/* ---------- game ---------- */
+#game { position: absolute; inset: 0; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; image-rendering: pixelated; background: #000; }
+#hudTop { position: absolute; top: 0; left: 0; right: 0; padding: calc(env(safe-area-inset-top,0px) + 6px) 10px 6px; display: flex; gap: 10px; align-items: center;
+	background: linear-gradient(to bottom, rgba(16,19,21,.92), rgba(16,19,21,.72) 70%, rgba(16,19,21,0)); pointer-events: none; }
+#hudTop > * { pointer-events: auto; }
+#portrait { position: relative; width: 46px; height: 46px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; cursor: pointer; flex: none; padding: 0; }
+#portrait .lvl { position: absolute; bottom: -6px; right: -6px; background: var(--brass); color: var(--brass-ink); font-size: 11px; font-weight: 700; border-radius: 9px; min-width: 18px; padding: 0 4px; line-height: 17px; text-align: center; font-variant-numeric: tabular-nums; }
+#portrait.levelup { border-color: var(--quest); box-shadow: 0 0 0 2px rgba(224,192,64,.45); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(224,192,64,.15); } }
+.bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.meter { position: relative; height: 16px; background: rgba(0,0,0,.55); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; width: 0; transition: width .25s; }
+.meter span { position: relative; display: block; font-size: 11px; line-height: 14px; padding: 0 6px; font-weight: 700; text-shadow: 0 1px 1px #000; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter.hp i { background: var(--hp); } .meter.xp i { background: var(--xp); } .meter.ap i { background: var(--ap); }
+#gold { font-size: 13px; color: var(--reward); font-variant-numeric: tabular-nums; white-space: nowrap; align-self: flex-start; padding-top: 3px; }
+#conds { position: absolute; left: 10px; right: 10px; top: calc(env(safe-area-inset-top,0px) + 62px); display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+#conds button { pointer-events: auto; position: relative; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: rgba(20,24,27,.8); cursor: pointer; }
+#conds button b { position: absolute; right: 1px; bottom: 0; font-size: 10px; text-shadow: 0 0 2px #000, 0 0 2px #000; font-variant-numeric: tabular-nums; }
+#conds button.immune::after { content: ""; position: absolute; inset: 0; border: 2px solid var(--extra); border-radius: 6px; }
+#status { position: absolute; left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom,0px) + 132px); background: rgba(16,19,21,.82); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; font-size: 14px; line-height: 1.35; white-space: pre-line; cursor: pointer; }
+#toast { position: absolute; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top,0px) + 70px); max-width: calc(100% - 32px); background: rgba(30,36,39,.96); border: 1px solid var(--brass); color: var(--parchment); border-radius: var(--r); padding: 9px 14px; font-size: 14px; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+
+#hudBottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px calc(env(safe-area-inset-bottom,0px) + 8px); display: flex; flex-direction: column; gap: 8px;
+	background: linear-gradient(to top, rgba(16,19,21,.95), rgba(16,19,21,.8) 75%, rgba(16,19,21,0)); }
+#quick { display: flex; gap: 8px; justify-content: flex-end; }
+.qslot { position: relative; width: 50px; height: 50px; border-radius: 9px; border: 1px solid var(--line); background: rgba(30,36,39,.9); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.qslot b { position: absolute; right: 3px; bottom: 1px; font-size: 11px; text-shadow: 0 0 3px #000; font-variant-numeric: tabular-nums; }
+.qslot.empty { opacity: .55; }
+.qslot .n { position: absolute; left: 4px; top: 1px; font-size: 10px; color: var(--muted); }
+#tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.tool { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px 5px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 11px; color: var(--muted); letter-spacing: .03em; min-height: 54px; }
+.tool img { width: 28px; height: 28px; image-rendering: pixelated; }
+.tool:active { filter: brightness(1.3); }
+
+#combat { display: flex; flex-direction: column; gap: 8px; }
+#combat .foe { display: flex; gap: 10px; align-items: center; background: rgba(30,36,39,.92); border: 1px solid #5a3631; border-radius: var(--r); padding: 6px 8px; cursor: pointer; }
+#combat .foe .name { font-weight: 700; font-size: 14px; }
+#combat .foe .bars { gap: 3px; }
+#combat .turn { text-align: center; font-family: var(--font-display); color: var(--hp); font-size: 17px; padding: 10px; background: rgba(30,36,39,.92); border-radius: var(--r); border: 1px solid #5a3631; }
+#combat .acts { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+#combat .acts .btn { min-height: 52px; }
+#combat .apline { display: flex; gap: 8px; align-items: center; }
+#combat .apline .meter { flex: 1; }
+#combat .apline .btn { flex: none; }
+
+/* d-pad */
+#dpad { position: absolute; right: 12px; bottom: calc(var(--hudH, 140px) + 8px); width: 138px; height: 138px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px; opacity: .78; touch-action: none; }
+#dpad.left { right: auto; left: 12px; }
+#dpad button { border: 1px solid var(--line); background: rgba(30,36,39,.85); border-radius: 8px; color: var(--muted); font-size: 18px; padding: 0; }
+#dpad button.c { background: rgba(30,36,39,.6); border-color: transparent; border-radius: 50%; font-size: 15px; color: var(--parchment); }
+
+/* ---------- sheets (modal screens) ---------- */
+#sheets { position: absolute; inset: 0; pointer-events: none; }
+.scrim { position: absolute; inset: 0; background: rgba(5,7,8,.55); pointer-events: auto; animation: fade .18s ease-out; }
+@keyframes fade { from { opacity: 0; } }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: calc(100% - env(safe-area-inset-top,0px) - 24px); display: flex; flex-direction: column; background: var(--panel); border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; pointer-events: auto; animation: rise .22s cubic-bezier(.2,.8,.2,1); box-shadow: 0 -10px 40px rgba(0,0,0,.45); }
+.sheet.full { top: calc(env(safe-area-inset-top,0px) + 10px); }
+@media (min-width: 700px) { .sheet { left: 50%; right: auto; width: 560px; transform: translateX(-50%); bottom: 16px; border-radius: 16px; border: 1px solid var(--line); } .sheet.full { top: 16px; } @keyframes rise { from { opacity: 0; } } }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+.sheet header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.sheet header h2 { font-family: var(--font-display); font-weight: 700; font-size: 21px; margin: 0; flex: 1; min-width: 0; text-wrap: balance; color: var(--brass); line-height: 1.15; }
+.sheet header .sub { display: block; font-family: var(--font-body); font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: .02em; }
+.sheet .x { flex: none; width: 36px; height: 36px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; font-size: 18px; line-height: 1; }
+.sheet .body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; min-height: 0; -webkit-user-select: text; user-select: text; }
+.sheet footer { flex: none; padding: 10px 16px calc(env(safe-area-inset-bottom,0px) + 12px); border-top: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
+.sheet footer .btn { flex: 1 1 0; }
+.sheet p { margin: 0; line-height: 1.45; }
+.muted { color: var(--muted); }
+.h3 { font-family: var(--font-display); font-size: 15px; color: var(--brass); margin: 4px 0 -4px; letter-spacing: .02em; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; }
+.list { display: flex; flex-direction: column; gap: 6px; }
+.item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; text-align: left; width: 100%; }
+.item .t { flex: 1; min-width: 0; font-size: 15px; line-height: 1.25; }
+.item .t small { display: block; color: var(--muted); font-size: 12.5px; }
+.item.off { opacity: .5; }
+.item .price { color: var(--reward); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.r-rare { color: var(--rare); } .r-extraordinary { color: var(--extra); } .r-legendary { color: var(--legend); } .r-quest { color: var(--quest); }
+.tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.tabs button { background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 10px 8px; color: var(--muted); cursor: pointer; font-weight: 500; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--parchment); border-bottom-color: var(--brass); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 5px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.chips button[aria-pressed="true"] { border-color: var(--brass); color: var(--parchment); background: #2d2a1e; }
+.effects { display: flex; flex-direction: column; gap: 3px; font-size: 14.5px; }
+.effects .eh { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
+.effects a { color: var(--parchment); text-decoration: underline; text-decoration-color: var(--line); cursor: pointer; }
+.wear { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.wear button { display: flex; align-items: center; gap: 6px; padding: 5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; min-width: 0; font-size: 12px; color: var(--muted); text-align: left; }
+.wear button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wear button.on { color: var(--parchment); }
+.wear img { width: 32px; height: 32px; image-rendering: pixelated; opacity: .5; }
+
+/* conversation */
+.convo .line { display: flex; gap: 10px; align-items: flex-start; }
+.convo .line .who { font-weight: 700; color: var(--brass); }
+.convo .line.player .who { color: #9cc3e8; }
+.convo .line.old { opacity: .55; }
+.convo .line.reward { color: var(--reward); font-size: 14px; padding-left: 4px; }
+.convo .line p { flex: 1; min-width: 0; }
+.replies { display: flex; flex-direction: column; gap: 6px; }
+.replies button { text-align: left; padding: 11px 12px; border-radius: var(--r); border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; line-height: 1.35; }
+.replies button:active { border-color: var(--brass); }
+.qty { display: flex; align-items: center; gap: 10px; }
+.qty input[type=range] { flex: 1; accent-color: var(--brass); }
+.qty output { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; font-size: 18px; }
+.quest summary { cursor: pointer; padding: 9px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+.quest summary::-webkit-details-marker { display: none; }
+.quest[open] summary { border-color: var(--brass); }
+.quest ul { margin: 8px 0 4px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.4; font-size: 14.5px; }
+.quest .done { color: var(--legend); }
+.log { font-size: 14px; line-height: 1.4; display: flex; flex-direction: column; gap: 3px; }
+.log .sep { border-top: 1px dashed var(--line); margin: 4px 0; }
+.wm { position: relative; overflow: auto; max-height: 100%; background: #0c0e10; border-radius: var(--r); touch-action: pan-x pan-y; }
+.wm canvas { display: block; image-rendering: pixelated; }
+.note { font-size: 13px; color: var(--muted); line-height: 1.4; }
+</style>
+<meta name="description" content="Andor's Trail, the open-source fantasy RPG, playable in your browser. Add it to your home screen to play full screen on iPhone and Android.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+</head>
+<body>
+<div id="app">
+	<div id="loading" class="screen">
+		<img class="logo" src="data/img/andors_trail_logo.png" alt="Andor's Trail">
+		<div class="bar"><i id="loadbar"></i></div>
+		<p id="loadmsg">Loading the world…</p>
+	</div>
+
+	<div id="start" class="screen" hidden>
+		<img class="logo" src="data/img/andors_trail_logo.png" alt="Andor's Trail">
+		<p class="tag">Find your brother Andor. A quest-driven fantasy RPG, right in your browser.</p>
+		<div class="menu" id="startMenu"></div>
+	</div>
+
+	<div id="game" hidden>
+		<canvas id="map"></canvas>
+		<div id="hudTop">
+			<button id="portrait" aria-label="Hero info"><span class="lvl" id="lvl">1</span></button>
+			<div class="bars">
+				<div class="meter hp"><i id="hpFill"></i><span id="hpText">HP</span></div>
+				<div class="meter xp"><i id="xpFill"></i><span id="xpText">XP</span></div>
+			</div>
+			<div id="gold">0 gold</div>
+		</div>
+		<div id="conds"></div>
+		<div id="status" hidden></div>
+		<div id="dpad" hidden>
+			<button data-d="-1,-1" aria-label="Up left">↖</button><button data-d="0,-1" aria-label="Up">↑</button><button data-d="1,-1" aria-label="Up right">↗</button>
+			<button data-d="-1,0" aria-label="Left">←</button><button class="c" id="dpadHide" aria-label="Hide arrow buttons">✕</button><button data-d="1,0" aria-label="Right">→</button>
+			<button data-d="-1,1" aria-label="Down left">↙</button><button data-d="0,1" aria-label="Down">↓</button><button data-d="1,1" aria-label="Down right">↘</button>
+		</div>
+		<div id="hudBottom">
+			<div id="quick"></div>
+			<div id="combat" hidden></div>
+			<div id="tools">
+				<button class="tool" id="tHero"><img src="data/img/char_hero.png" alt=""><span>Hero</span></button>
+				<button class="tool" id="tItems"><img src="data/img/ui_icon_equipment.png" alt=""><span>Items</span></button>
+				<button class="tool" id="tQuests"><img src="data/img/ui_icon_quest.png" alt=""><span>Quests</span></button>
+				<button class="tool" id="tMap"><img src="data/img/ui_icon_map.png" alt=""><span>Map</span></button>
+				<button class="tool" id="tMenu"><img src="data/img/ui_icon_save.png" alt=""><span>Menu</span></button>
+			</div>
+		</div>
+		<div id="toast" hidden></div>
+	</div>
+	<div id="sheets"></div>
+</div>
+<script type="module" src="js/ui/app.js"></script>
+</body>
+</html>
