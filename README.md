@@ -37,7 +37,7 @@ The site is about 33 MB in total, but players only download what they need:
 
 ### Saves
 
-Saves are stored in the player's browser (`localStorage`) on that device, under keys starting with `andorstrail.`. Slot 0 is the autosave, written when the page is hidden or closed. **Menu → Save** offers extra slots, and Menu → Save also has **"Copy autosave as text"** and **"Paste save into new slot"**, so players can back up a save or move it to another device. Saves don't move between websites (each domain has its own storage), and Android `.sav` files can't be imported.
+Saves are stored in the player's browser (`localStorage`) on that device, under keys starting with `andorstrail.`. Slot 0 is the autosave, written when the page is hidden or closed. **Menu → Save game** offers extra slots, and each slot can be deleted. The Save and Load screens can also **save the autosave to a file** and **load a save from a file**, so players can back up a save or move it to another device. Copying and pasting the save as text works too. Saves don't move between websites (each domain has its own storage), and Android `.sav` files can't be imported.
 
 ## What's in this folder
 

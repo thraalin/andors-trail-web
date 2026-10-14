@@ -92,7 +92,7 @@ class UI {
 		};
 		if (header) add(S('startscreen_continue'), 'primary', () => this.continueGame(), `${header.name}, ${S('savegame_currenthero_displayinfo', header.level, header.xp, header.gold)}`);
 		add(S('startscreen_newgame'), header ? '' : 'primary', () => Screens.showNewGame(this, !!header));
-		if (Savegames.listSlots().some((s) => s.slot > 0)) add(S('startscreen_load_game'), '', () => Screens.showSaveLoad(this, 'load'));
+		add(S('startscreen_load_game'), '', () => Screens.showSaveLoad(this, 'load'));
 		add(S('menu_settings'), '', () => Screens.showSettings(this));
 		add(S('startscreen_about'), '', () => Screens.showAbout(this));
 	}

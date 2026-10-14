@@ -646,11 +646,17 @@ export function showSaveLoad(ui, mode) {
 	let deletedAny = false;
 	const sheet = ui.openSheet({ title: S(isSave ? 'loadsave_title_save' : 'loadsave_title_load'), body: '', footer: [{ label: S('dialog_close') }],
 		onClose: () => { if (deletedAny && !$('start').hidden) ui.showStart(); } });
+	// File downloads don't work inside an embedded frame (such as a claude.ai page), so only offer
+	// "Save to file" when the game is the top-level page.
+	let canDownload = false;
+	try { canDownload = window.top === window.self; } catch (e) { canDownload = false; }
 	const render = () => {
 		const slots = Savegames.listSlots().filter((s) => s.slot > 0);
 		let html = isSave ? `<p class="muted">${esc(S('loadsave_selectslot'))}</p>` : '';
 		html += '<div class="list" id="slots"></div>';
-		html += `<div class="h3">Backup</div><p class="note">Saves live in this browser on this device. Copy a save as text to back it up or move it to another device, then paste it back here.</p>
+		html += `<div class="h3">Backup</div><p class="note">Saves live in this browser on this device. To back one up or move it to another device, ${canDownload ? 'save it to a file or ' : ''}copy it as text, then load the file or paste the text here.</p>
+			<div class="row"><button class="btn small" id="impFile">Load save from file</button>${canDownload ? '<button class="btn small" id="expFile">Save autosave to file</button>' : ''}</div>
+			<input type="file" id="fileIn" accept=".txt,.json,text/plain,application/json" hidden>
 			<div class="row"><button class="btn small" id="exp">Copy autosave as text</button><button class="btn small" id="imp">Paste save into new slot</button></div>
 			<textarea id="io" rows="3" style="width:100%;font:12px ui-monospace,monospace;background:var(--panel-2);color:var(--parchment);border:1px solid var(--line);border-radius:8px;padding:8px;-webkit-user-select:text;user-select:text" placeholder="Save text appears here, or paste save text here" aria-label="Save text"></textarea>`;
 		sheet.setBody(html);
@@ -678,12 +684,43 @@ export function showSaveLoad(ui, mode) {
 			row.append(b, del);
 			list.appendChild(row);
 		}
-		if (!isSave && !slots.length) list.innerHTML = '<p class="muted">No saved games yet.</p>';
+		if (!isSave && !slots.length) list.innerHTML = '<p class="muted">No saved games yet. You can load a save file below.</p>';
 		const io = sheet.body.querySelector('#io');
 		sheet.body.querySelector('#exp').onclick = async () => {
 			const txt = Savegames.exportSlot(0) || '';
 			io.value = txt;
 			try { await navigator.clipboard.writeText(txt); ui.toast('Save copied'); } catch (e) { io.select(); ui.toast('Select the text and copy it'); }
+		};
+		const nextSlot = () => (slots.length ? Math.max(...slots.map((s) => s.slot)) + 1 : 1);
+		const fileIn = sheet.body.querySelector('#fileIn');
+		sheet.body.querySelector('#impFile').onclick = () => fileIn.click();
+		fileIn.onchange = async () => {
+			const f = fileIn.files && fileIn.files[0];
+			if (!f) return;
+			let text = '';
+			try { text = await f.text(); } catch (e) { ui.toast('Could not read that file.'); return; }
+			const slot = nextSlot();
+			try { Savegames.importToSlot(slot, text.trim()); } catch (e) {
+				showMessage(ui, 'Not a save file', `"${f.name}" isn't a save from this version of the game. Use a file made with "Save autosave to file", or text copied with "Copy autosave as text". Save files from the Android app can't be loaded.`);
+				return;
+			}
+			const hd = Savegames.getHeader(slot);
+			render();
+			if (isSave) ui.toast(`Loaded "${f.name}" into slot ${slot}`);
+			else showConfirm(ui, 'Save file added', `${hd ? fmt(hd) : f.name} is now in slot ${slot}. Play it now?`, S('startscreen_load'), () => doLoad(slot), 'Not now');
+		};
+		const expFile = sheet.body.querySelector('#expFile');
+		if (expFile) expFile.onclick = () => {
+			const txt = Savegames.exportSlot(0);
+			if (!txt) { ui.toast('There is no autosave yet.'); return; }
+			const hd = Savegames.getHeader(0);
+			const name = `andors-trail-${(hd && hd.name ? hd.name : 'save').replace(/[^A-Za-z0-9_-]+/g, '_')}-level${hd ? hd.level : ''}.txt`;
+			const url = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+			const a = document.createElement('a');
+			a.href = url; a.download = name;
+			document.body.appendChild(a); a.click(); a.remove();
+			setTimeout(() => URL.revokeObjectURL(url), 5000);
+			ui.toast('Save file downloaded');
 		};
 		sheet.body.querySelector('#imp').onclick = () => {
 			try {
