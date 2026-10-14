@@ -190,6 +190,8 @@ export class MovementController {
 		this.movementDx = dx;
 		this.movementDy = dy;
 		this.movementDestination = destination;
+		// Tapping a monster or NPC means "go to them" even if they wander off: follow that actor.
+		this.movementTarget = destination && this.world.model.currentMaps.map ? this.world.model.currentMaps.map.getMonsterAt(destination) : null;
 		this.movementHandler.start();
 	}
 	stopMovement() { this.movementHandler.stop(); }
@@ -199,14 +201,20 @@ export class MovementController {
 		// Web addition: when the player tapped a destination tile, follow a shortest path to it
 		// (re-planned every step so wandering monsters are routed around) and stop on arrival.
 		if (this.movementDestination) {
-			const pp = this.world.model.player.position, dest = this.movementDestination;
-			if (pp.x === dest.x && pp.y === dest.y) return false;
-			const step = this.nextStepToward(dest);
+			const pp = this.world.model.player.position;
+			const target = this.movementTarget;
+			if (target) {
+				// stop if the actor we were following is gone (killed, removed, other map)
+				const map = this.world.model.currentMaps.map;
+				if (!map.spawnAreas.some((a) => a.monsters.includes(target))) return false;
+			} else if (pp.x === this.movementDestination.x && pp.y === this.movementDestination.y) return false;
+			const step = this.nextStepToward(this.movementDestination, target);
 			if (step) {
 				this.movementDx = step.dx; this.movementDy = step.dy;
 			} else {
 				// Can't get any closer. If the target is right next to us (an NPC, a door, a sign),
 				// step into it once so it triggers, then stop.
+				const dest = target ? this.closestTileOf(target.rectPosition, pp) : this.movementDestination;
 				const dx = dest.x - pp.x, dy = dest.y - pp.y;
 				if (Math.max(abs(dx), abs(dy)) === 1 && this.world.model.currentMaps.tileMap.isWalkable(dest.x, dest.y)) this.movePlayer(dx, dy);
 				return false;
@@ -217,22 +225,33 @@ export class MovementController {
 		if (this.movementDestination && this.world.model.player.position.equals(before)) return false; // blocked
 		return true;
 	}
-	// Breadth-first search over walkable tiles (8 directions, like player movement). Monsters, map exits
-	// and key areas count as obstacles unless they are the destination, so a walk never leaves the map
-	// or bumps into someone by accident. If the destination can't be reached (a wall, a tree), the walk
-	// goes to the reachable tile closest to it. Each step strictly shortens the remaining path, so the
-	// hero can no longer bounce back and forth.
-	nextStepToward(dest) {
+	closestTileOf(rect, p) {
+		const cx = Math.max(rect.topLeft.x, Math.min(rect.topLeft.x + rect.size.width - 1, p.x));
+		const cy = Math.max(rect.topLeft.y, Math.min(rect.topLeft.y + rect.size.height - 1, p.y));
+		return new Coord(cx, cy);
+	}
+	// Breadth-first search over walkable tiles (8 directions, like player movement). Peaceful NPCs, map
+	// exits and key areas count as obstacles unless they are the destination, so a walk never leaves the
+	// map or starts a conversation by accident. Hostile monsters are not obstacles: walking into one starts
+	// a fight, as in the Android game. Tapping an actor follows that actor until you reach it. If the
+	// destination can't be reached (a wall, a tree), the walk goes to the reachable tile closest to it.
+	// For a fixed destination each step strictly shortens the remaining path, so the hero can't bounce
+	// back and forth.
+	nextStepToward(destination, target) {
 		const cm = this.world.model.currentMaps, map = cm.map, tm = cm.tileMap;
 		if (!map || !tm) return null;
-		const W = map.size.width, H = map.size.height, p = this.world.model.player.position;
-		const isDest = (x, y) => x === dest.x && y === dest.y;
+		const W = map.size.width, H = map.size.height, p = this.world.model.player.position, player = this.world.model.player;
+		const dest = target ? this.closestTileOf(target.rectPosition, p) : destination;
+		const isDest = target ? (x, y) => target.rectPosition.contains(x, y) : (x, y) => x === dest.x && y === dest.y;
 		const special = map.eventObjects.filter((o) => o.isActive && (o.type === 'newmap' || o.type === 'keyarea'));
 		const blocked = (x, y) => {
 			if (x < 0 || y < 0 || x >= W || y >= H) return true;
 			if (!tm.isWalkable(x, y)) return true;
 			if (isDest(x, y)) return false;
-			if (map.getMonsterAt(x, y)) return true;
+			// Peaceful NPCs are walked around. Hostile monsters are not: walking into one starts a
+			// fight, just like moving into a monster in the Android game.
+			const m = map.getMonsterAt(x, y);
+			if (m && !m.isAgressive(player)) return true;
 			for (const o of special) if (o.position.contains(x, y)) return true;
 			return false;
 		};
