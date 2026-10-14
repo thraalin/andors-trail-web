@@ -643,7 +643,9 @@ export function showMenu(ui) {
 export function showSaveLoad(ui, mode) {
 	const w = ui.world;
 	const isSave = mode === 'save';
-	const sheet = ui.openSheet({ title: S(isSave ? 'loadsave_title_save' : 'loadsave_title_load'), body: '', footer: [{ label: S('dialog_close') }] });
+	let deletedAny = false;
+	const sheet = ui.openSheet({ title: S(isSave ? 'loadsave_title_save' : 'loadsave_title_load'), body: '', footer: [{ label: S('dialog_close') }],
+		onClose: () => { if (deletedAny && !$('start').hidden) ui.showStart(); } });
 	const render = () => {
 		const slots = Savegames.listSlots().filter((s) => s.slot > 0);
 		let html = isSave ? `<p class="muted">${esc(S('loadsave_selectslot'))}</p>` : '';
@@ -664,7 +666,17 @@ export function showSaveLoad(ui, mode) {
 			const b = h(`<button class="item"><span class="t">Slot ${slot}: ${esc(fmt(header))}<small>${esc(when(header))}${header.map ? ' · ' + esc(header.map) : ''}</small></span></button>`);
 			b.prepend(ui.icon(header.iconID || 1, 32));
 			b.onclick = () => (isSave ? confirmOverwrite(slot, header) : doLoad(slot));
-			list.appendChild(b);
+			const del = h(`<button class="slotdel" aria-label="Delete slot ${slot}" title="Delete">✕</button>`);
+			del.onclick = () => showConfirm(ui, 'Delete saved game?', `Slot ${slot}: ${fmt(header)}\n\nThis can't be undone.`, 'Delete', () => {
+				Savegames.deleteSlot(slot);
+				deletedAny = true;
+				ui.toast(`Slot ${slot} deleted`);
+				render();
+			});
+			const row = document.createElement('div');
+			row.className = 'slotrow';
+			row.append(b, del);
+			list.appendChild(row);
 		}
 		if (!isSave && !slots.length) list.innerHTML = '<p class="muted">No saved games yet.</p>';
 		const io = sheet.body.querySelector('#io');

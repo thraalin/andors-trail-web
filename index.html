@@ -149,6 +149,10 @@ canvas.tileicon { image-rendering: pixelated; display: block; flex: none; }
 .item .t { flex: 1; min-width: 0; font-size: 15px; line-height: 1.25; }
 .item .t small { display: block; color: var(--muted); font-size: 12.5px; }
 .item.off { opacity: .5; }
+.slotrow { display: flex; gap: 6px; align-items: stretch; }
+.slotrow .item { flex: 1; min-width: 0; }
+.slotdel { flex: none; width: 46px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); color: var(--muted); font-size: 16px; cursor: pointer; }
+.slotdel:active { color: var(--hp); border-color: var(--hp); }
 .item .price { color: var(--reward); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .r-rare { color: var(--rare); } .r-extraordinary { color: var(--extra); } .r-legendary { color: var(--legend); } .r-quest { color: var(--quest); }
 .tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
