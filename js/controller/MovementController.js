@@ -190,9 +190,29 @@ export class MovementController {
 		this.movementDx = dx;
 		this.movementDy = dy;
 		this.movementDestination = destination;
+		const map = this.world.model.currentMaps.map;
 		// Tapping a monster or NPC means "go to them" even if they wander off: follow that actor.
-		this.movementTarget = destination && this.world.model.currentMaps.map ? this.world.model.currentMaps.map.getMonsterAt(destination) : null;
+		this.movementTarget = destination && map ? map.getMonsterAt(destination) : null;
+		// Tapping a map exit (or just past the edge of the map next to one) means "go through it":
+		// any tile of the exit area will do.
+		this.movementGoalRect = destination && map && !this.movementTarget ? this.findExitGoal(destination) : null;
 		this.movementHandler.start();
+	}
+	findExitGoal(dest) {
+		const cm = this.world.model.currentMaps, map = cm.map, tm = cm.tileMap;
+		const exits = map.eventObjects.filter((o) => o.isActive && o.type === 'newmap');
+		for (const o of exits) if (o.position.contains(dest.x, dest.y)) return o.position;
+		const W = map.size.width, H = map.size.height;
+		const outside = dest.x < 0 || dest.y < 0 || dest.x >= W || dest.y >= H;
+		if (!outside && tm && tm.isWalkable(dest.x, dest.y)) return null; // an ordinary walkable spot
+		const reach = outside ? 3 : 1;
+		let best = null, bestD = Infinity;
+		for (const o of exits) {
+			const c = this.closestTileOf(o.position, dest);
+			const d = Math.max(abs(c.x - dest.x), abs(c.y - dest.y));
+			if (d <= reach && d < bestD) { best = o.position; bestD = d; }
+		}
+		return best;
 	}
 	stopMovement() { this.movementHandler.stop(); }
 	onTick() {
@@ -203,18 +223,27 @@ export class MovementController {
 		if (this.movementDestination) {
 			const pp = this.world.model.player.position;
 			const target = this.movementTarget;
+			const goalRect = target ? target.rectPosition : this.movementGoalRect;
 			if (target) {
 				// stop if the actor we were following is gone (killed, removed, other map)
 				const map = this.world.model.currentMaps.map;
 				if (!map.spawnAreas.some((a) => a.monsters.includes(target))) return false;
+			} else if (goalRect) {
+				if (goalRect.contains(pp.x, pp.y)) return false;
 			} else if (pp.x === this.movementDestination.x && pp.y === this.movementDestination.y) return false;
-			const step = this.nextStepToward(this.movementDestination, target);
+			let step = this.nextStepToward(this.movementDestination, goalRect, false);
+			// If only a locked key area is in the way, walk into it anyway so the game shows why
+			// (for example "You should talk to Mikhail first"), as walking there would on Android.
+			if (step && !step.reaches) {
+				const viaLocked = this.nextStepToward(this.movementDestination, goalRect, true);
+				if (viaLocked && viaLocked.reaches) step = viaLocked;
+			}
 			if (step) {
 				this.movementDx = step.dx; this.movementDy = step.dy;
 			} else {
 				// Can't get any closer. If the target is right next to us (an NPC, a door, a sign),
 				// step into it once so it triggers, then stop.
-				const dest = target ? this.closestTileOf(target.rectPosition, pp) : this.movementDestination;
+				const dest = goalRect ? this.closestTileOf(goalRect, pp) : this.movementDestination;
 				const dx = dest.x - pp.x, dy = dest.y - pp.y;
 				if (Math.max(abs(dx), abs(dy)) === 1 && this.world.model.currentMaps.tileMap.isWalkable(dest.x, dest.y)) this.movePlayer(dx, dy);
 				return false;
@@ -231,19 +260,21 @@ export class MovementController {
 		return new Coord(cx, cy);
 	}
 	// Breadth-first search over walkable tiles (8 directions, like player movement). Peaceful NPCs, map
-	// exits and key areas count as obstacles unless they are the destination, so a walk never leaves the
+	// exits and locked key areas count as obstacles unless they are the destination, so a walk never leaves the
 	// map or starts a conversation by accident. Hostile monsters are not obstacles: walking into one starts
 	// a fight, as in the Android game. Tapping an actor follows that actor until you reach it. If the
 	// destination can't be reached (a wall, a tree), the walk goes to the reachable tile closest to it.
 	// For a fixed destination each step strictly shortens the remaining path, so the hero can't bounce
 	// back and forth.
-	nextStepToward(destination, target) {
+	nextStepToward(destination, goalRect, allowLockedKeyAreas) {
 		const cm = this.world.model.currentMaps, map = cm.map, tm = cm.tileMap;
 		if (!map || !tm) return null;
 		const W = map.size.width, H = map.size.height, p = this.world.model.player.position, player = this.world.model.player;
-		const dest = target ? this.closestTileOf(target.rectPosition, p) : destination;
-		const isDest = target ? (x, y) => target.rectPosition.contains(x, y) : (x, y) => x === dest.x && y === dest.y;
-		const special = map.eventObjects.filter((o) => o.isActive && (o.type === 'newmap' || o.type === 'keyarea'));
+		const dest = goalRect ? this.closestTileOf(goalRect, p) : destination;
+		const isDest = goalRect ? (x, y) => goalRect.contains(x, y) : (x, y) => x === dest.x && y === dest.y;
+		// exits are never walked through on the way somewhere else; key areas only when they are locked
+		const special = map.eventObjects.filter((o) => o.isActive &&
+			(o.type === 'newmap' || (o.type === 'keyarea' && !allowLockedKeyAreas && !this.controllers.mapController.isKeyAreaOpen(o))));
 		const blocked = (x, y) => {
 			if (x < 0 || y < 0 || x >= W || y >= H) return true;
 			if (!tm.isWalkable(x, y)) return true;
@@ -282,7 +313,8 @@ export class MovementController {
 		let n = best;
 		while (prev[n] !== start) n = prev[n];
 		const nx = n % W, ny = (n - nx) / W;
-		return { dx: nx - p.x, dy: ny - p.y };
+		const bx = best % W, by = (best - bx) / W;
+		return { dx: nx - p.x, dy: ny - p.y, reaches: isDest(bx, by) };
 	}
 	static refreshMonsterAggressiveness() { /* faction aggressiveness is dynamic in the original */ }
 	static hasAdjacentAggressiveMonster(map, player) { return MovementController.getAdjacentAggressiveMonster(map, player) != null; }

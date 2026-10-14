@@ -113,6 +113,10 @@ export class MapController {
 		this.world.model.player.setSpawnPlace(this.world.model.currentMaps.map.name, area.id);
 		this.worldEventListeners.emit('onPlayerRested');
 	}
+	// Side-effect-free version of canEnterKeyArea, used when planning a walk.
+	isKeyAreaOpen(area) {
+		return area.enteringRequirement == null || ConversationController.canFulfillRequirement(this.world, area.enteringRequirement);
+	}
 	canEnterKeyArea(area) {
 		if (area.enteringRequirement == null || ConversationController.canFulfillRequirement(this.world, area.enteringRequirement)) {
 			if (area.enteringRequirement) ConversationController.requirementFulfilled(this.world, area.enteringRequirement, this.controllers);
